@@ -47,14 +47,14 @@ public:
 	XMFLOAT3 mForward = XMFLOAT3(0, 0, 1);
 	XMFLOAT3 mPosition = XMFLOAT3(0, 0, 0);
 
-	Microsoft::WRL::ComPtr<ID3D11Buffer> mLightCbuffer=nullptr;
-	Microsoft::WRL::ComPtr<ID3D11Buffer> mObjectCbuffer=nullptr;
+	Microsoft::WRL::ComPtr<ID3D11Buffer> mVsCB=nullptr;
+	Microsoft::WRL::ComPtr<ID3D11Buffer> mPsCB=nullptr;
 
 	void XM_CALLCONV SetWorld(FXMMATRIX w);
 	void XM_CALLCONV SetLocalToModel(FXMMATRIX m);
 	void SetMeshAgrs(std::string SubMeshName);
 	void SetRenderDefaultAgrs(ID3D11DeviceContext *context);
-	void CreatLightCBuffer(ID3D11Device *device, UINT ByteWidth);
-	void CreatObjectCBuffer(ID3D11Device *device, UINT ByteWidth);
+	void CreatObjectPsCBuffer(ID3D11Device *device, UINT ByteWidth);
+	void CreatObjectVsCBuffer(ID3D11Device *device, UINT ByteWidth);
 
 };

@@ -51,6 +51,18 @@
     <ClInclude Include="Common\ShadowMap.h">
       <Filter>头文件</Filter>
     </ClInclude>
+    <ClInclude Include="Common\Gbuffer.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="Common\DirectionLight.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="Common\Ssao.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="Common\LightBuffer.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Common\d3dApp.cpp">
@@ -86,21 +98,57 @@
     <ClCompile Include="Common\ShadowMap.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
+    <ClCompile Include="Common\Gbuffer.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="Common\DirectionLight.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="Common\Ssao.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="Common\LightBuffer.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <None Include="shader\Color.hlsl">
-      <Filter>shader</Filter>
-    </None>
     <None Include="shader\Lighting.hlsl">
       <Filter>shader</Filter>
     </None>
     <None Include="shader\SkyBox.hlsl">
       <Filter>shader</Filter>
     </None>
-    <None Include="shader\DebugShadow.hlsl">
+    <None Include="shader\LightDepth.hlsl">
       <Filter>shader</Filter>
     </None>
-    <None Include="shader\LightDepth.hlsl">
+    <None Include="shader\DrawGbuffer.hlsl">
+      <Filter>shader</Filter>
+    </None>
+    <None Include="shader\DefferredLightPass.hlsl">
+      <Filter>shader</Filter>
+    </None>
+    <None Include="shader\ForwardDefault.hlsl">
+      <Filter>shader</Filter>
+    </None>
+    <None Include="shader\DebugSingleRT.hlsl">
+      <Filter>shader</Filter>
+    </None>
+    <None Include="shader\DebugRT.hlsl">
+      <Filter>shader</Filter>
+    </None>
+    <None Include="shader\DrawSSAO.hlsl">
+      <Filter>shader</Filter>
+    </None>
+    <None Include="shader\BlurSSAO.hlsl">
+      <Filter>shader</Filter>
+    </None>
+    <None Include="shader\DrawSSSM.hlsl">
+      <Filter>shader</Filter>
+    </None>
+    <None Include="shader\FXAAhelper.hlsl">
+      <Filter>shader</Filter>
+    </None>
+    <None Include="shader\FXAA.hlsl">
       <Filter>shader</Filter>
     </None>
   </ItemGroup>

@@ -25,16 +25,13 @@ MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 
 D3DApp::D3DApp(HINSTANCE hInstance)
 :	mhAppInst(hInstance),
-	mMainWndCaption(L"D3D11 Application"),
+	mMainWndCaption(L"Car demo"),
 	md3dDriverType(D3D_DRIVER_TYPE_HARDWARE),
-	mClientWidth(800),
-	mClientHeight(600),
-	mEnable4xMsaa(true),
+	mClientWidth(1024),
+	mClientHeight(768),
+	mEnable4xMsaa(false),//使用延迟渲染关闭msaa,防止过大缓存区占用
 	mhMainWnd(0),
 	mAppPaused(false),
-	mMinimized(false),
-	mMaximized(false),
-	mResizing(false),
 	m4xMsaaQuality(0),
  
 	md3dDevice(0),
@@ -119,74 +116,7 @@ bool D3DApp::Init()
 
 	return true;
 }
- 
-void D3DApp::OnResize()
-{
-	assert(md3dImmediateContext);
-	assert(md3dDevice);
-	assert(mSwapChain);
-	/*
-	You can't resize a swap chain unless you release all outstanding references to its back buffers.
-	You must release all of its direct and indirect references on the back buffers in order for ResizeBuffers to succeed.
-	*/
-	mRenderTargetView.Reset();
-	mDepthStencilBuffer.Reset();
-	mDepthStencilView.Reset();
-	// Resize the swap chain and recreate the render target view.
-	HR(mSwapChain->ResizeBuffers(1, mClientWidth, mClientHeight, DXGI_FORMAT_R8G8B8A8_UNORM, 0));
-	ComPtr<ID3D11Texture2D> backBuffer;
-	HR(mSwapChain->GetBuffer(0, __uuidof(ID3D11Texture2D), reinterpret_cast<void**>(backBuffer.GetAddressOf())));
-	HR(md3dDevice->CreateRenderTargetView(backBuffer.Get(), 0, mRenderTargetView.GetAddressOf()));
-	backBuffer.Reset();
-	// Create the depth/stencil buffer and view.
 
-	D3D11_TEXTURE2D_DESC depthStencilDesc;
-	
-	depthStencilDesc.Width     = mClientWidth;
-	depthStencilDesc.Height    = mClientHeight;
-	depthStencilDesc.MipLevels = 1;
-	depthStencilDesc.ArraySize = 1;
-	depthStencilDesc.Format    = DXGI_FORMAT_D24_UNORM_S8_UINT;
-
-	// Use 4X MSAA? --must match swap chain MSAA values.
-	if( mEnable4xMsaa )
-	{
-		depthStencilDesc.SampleDesc.Count   = 4;
-		depthStencilDesc.SampleDesc.Quality = m4xMsaaQuality-1;
-	}
-	// No MSAA
-	else
-	{
-		depthStencilDesc.SampleDesc.Count   = 1;
-		depthStencilDesc.SampleDesc.Quality = 0;
-	}
-
-	depthStencilDesc.Usage          = D3D11_USAGE_DEFAULT;
-	depthStencilDesc.BindFlags      = D3D11_BIND_DEPTH_STENCIL;
-	depthStencilDesc.CPUAccessFlags = 0; 
-	depthStencilDesc.MiscFlags      = 0;
-
-	HR(md3dDevice->CreateTexture2D(&depthStencilDesc, 0, mDepthStencilBuffer.GetAddressOf()));
-	HR(md3dDevice->CreateDepthStencilView(mDepthStencilBuffer.Get(), 0, mDepthStencilView.GetAddressOf()));
-
-
-	// Bind the render target view and depth/stencil view to the pipeline.
-
-	//md3dImmediateContext->OMSetRenderTargets(1, mRenderTargetView.GetAddressOf(), mDepthStencilView.Get());
-	
-
-	// Set the viewport transform.
-
-	mScreenViewport.TopLeftX = 0;
-	mScreenViewport.TopLeftY = 0;
-	mScreenViewport.Width    = static_cast<float>(mClientWidth);
-	mScreenViewport.Height   = static_cast<float>(mClientHeight);
-	mScreenViewport.MinDepth = 0.0f;
-	mScreenViewport.MaxDepth = 1.0f;
-
-	//md3dImmediateContext->RSSetViewports(1, &mScreenViewport);
-}
- 
 LRESULT D3DApp::MsgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
 	switch( msg )
@@ -198,11 +128,20 @@ LRESULT D3DApp::MsgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 		if( LOWORD(wParam) == WA_INACTIVE )
 		{
 			mAppPaused = true;
+			ShowCursor(true);
 			mTimer.Stop();
 		}
 		else
 		{
+			RECT rt;
+			GetWindowRect(mhMainWnd, &rt);//限制鼠标在画面内
+			rt.left += 10;
+			rt.bottom -= 10;
+			rt.top += 30;
+			rt.right -= 10;
+			ClipCursor(&rt);
 			mAppPaused = false;
+			ShowCursor(false);
 			mTimer.Start();
 		}
 		return 0;
@@ -210,56 +149,13 @@ LRESULT D3DApp::MsgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 	// WM_SIZE is sent when the user resizes the window.  
 	case WM_SIZE:
 		// Save the new client area dimensions.
-		mClientWidth  = LOWORD(lParam);
-		mClientHeight = HIWORD(lParam);
+		//mClientWidth  = LOWORD(lParam);
+		//mClientHeight = HIWORD(lParam);
 		if( md3dDevice )
 		{
 			if( wParam == SIZE_MINIMIZED )
 			{
 				mAppPaused = true;
-				mMinimized = true;
-				mMaximized = false;
-			}
-			else if( wParam == SIZE_MAXIMIZED )
-			{
-				mAppPaused = false;
-				mMinimized = false;
-				mMaximized = true;
-				OnResize();
-			}
-			else if( wParam == SIZE_RESTORED )
-			{
-				
-				// Restoring from minimized state?
-				if( mMinimized )
-				{
-					mAppPaused = false;
-					mMinimized = false;
-					OnResize();
-				}
-
-				// Restoring from maximized state?
-				else if( mMaximized )
-				{
-					mAppPaused = false;
-					mMaximized = false;
-					OnResize();
-				}
-				else if( mResizing )
-				{
-					// If user is dragging the resize bars, we do not resize 
-					// the buffers here because as the user continuously 
-					// drags the resize bars, a stream of WM_SIZE messages are
-					// sent to the window, and it would be pointless (and slow)
-					// to resize for each WM_SIZE message received from dragging
-					// the resize bars.  So instead, we reset after the user is 
-					// done resizing the window and releases the resize bars, which 
-					// sends a WM_EXITSIZEMOVE message.
-				}
-				else // API call such as SetWindowPos or mSwapChain->SetFullscreenState.
-				{
-					OnResize();
-				}
 			}
 		}
 		return 0;
@@ -267,7 +163,6 @@ LRESULT D3DApp::MsgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 	// WM_EXITSIZEMOVE is sent when the user grabs the resize bars.
 	case WM_ENTERSIZEMOVE:
 		mAppPaused = true;
-		mResizing  = true;
 		mTimer.Stop();
 		return 0;
 
@@ -275,9 +170,11 @@ LRESULT D3DApp::MsgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 	// Here we reset everything based on the new window dimensions.
 	case WM_EXITSIZEMOVE:
 		mAppPaused = false;
-		mResizing  = false;
 		mTimer.Start();
-		OnResize();
+		return 0;
+	case WM_KEYDOWN:
+		if (wParam == VK_ESCAPE)
+			DestroyWindow(mhMainWnd);
 		return 0;
  
 	// WM_DESTROY is sent when the window is being destroyed.
@@ -290,17 +187,13 @@ LRESULT D3DApp::MsgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 	case WM_MENUCHAR:
         // Don't beep when we alt-enter.
         return MAKELRESULT(0, MNC_CLOSE);
-
-	// Catch this message so to prevent the window from becoming too small.
-	case WM_GETMINMAXINFO:
-		((MINMAXINFO*)lParam)->ptMinTrackSize.x = 200;
-		((MINMAXINFO*)lParam)->ptMinTrackSize.y = 200; 
-		return 0;
 	case WM_MOUSEMOVE:
-		OnMouseMove(wParam, GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam));
+		if(!mAppPaused)
+			OnMouseMove(wParam, GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam));
 		return 0;
 	case WM_MOUSEWHEEL:
-		OnMouseWheel(wParam);
+		if (!mAppPaused)
+			OnMouseWheel(wParam);
 		return 0;
 	}
 
@@ -334,7 +227,7 @@ bool D3DApp::InitMainWindow()
 	int height = R.bottom - R.top;
 
 	mhMainWnd = CreateWindow(L"D3DWndClassName", mMainWndCaption.c_str(), 
-		WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, width, height, 0, 0, mhAppInst, 0); 
+		WS_OVERLAPPEDWINDOW^WS_THICKFRAME^WS_MAXIMIZEBOX, CW_USEDEFAULT, CW_USEDEFAULT, width, height, 0, 0, mhAppInst, 0);
 	if( !mhMainWnd )
 	{
 		MessageBox(0, L"CreateWindow Failed.", 0, 0);
@@ -439,7 +332,55 @@ bool D3DApp::InitDirect3D()
 	// also need to be executed every time the window is resized.  So
 	// just call the OnResize method here to avoid code duplication.
 	
-	OnResize();
+	assert(md3dImmediateContext);
+	assert(md3dDevice);
+	assert(mSwapChain);
+
+
+
+	// Resize the swap chain and recreate the render target view.
+	HR(mSwapChain->ResizeBuffers(1, mClientWidth, mClientHeight, DXGI_FORMAT_R8G8B8A8_UNORM, 0));
+	ComPtr<ID3D11Texture2D> backBuffer;
+	HR(mSwapChain->GetBuffer(0, __uuidof(ID3D11Texture2D), reinterpret_cast<void**>(backBuffer.GetAddressOf())));
+	HR(md3dDevice->CreateRenderTargetView(backBuffer.Get(), 0, mRenderTargetView.GetAddressOf()));
+	backBuffer.Reset();
+	// Create the depth/stencil buffer and view.
+
+	D3D11_TEXTURE2D_DESC depthStencilDesc;
+
+	depthStencilDesc.Width = mClientWidth;
+	depthStencilDesc.Height = mClientHeight;
+	depthStencilDesc.MipLevels = 1;
+	depthStencilDesc.ArraySize = 1;
+	depthStencilDesc.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
+
+	// Use 4X MSAA? --must match swap chain MSAA values.
+	if (mEnable4xMsaa)
+	{
+		depthStencilDesc.SampleDesc.Count = 4;
+		depthStencilDesc.SampleDesc.Quality = m4xMsaaQuality - 1;
+	}
+	// No MSAA
+	else
+	{
+		depthStencilDesc.SampleDesc.Count = 1;
+		depthStencilDesc.SampleDesc.Quality = 0;
+	}
+
+	depthStencilDesc.Usage = D3D11_USAGE_DEFAULT;
+	depthStencilDesc.BindFlags = D3D11_BIND_DEPTH_STENCIL;
+	depthStencilDesc.CPUAccessFlags = 0;
+	depthStencilDesc.MiscFlags = 0;
+
+	HR(md3dDevice->CreateTexture2D(&depthStencilDesc, 0, mDepthStencilBuffer.GetAddressOf()));
+	HR(md3dDevice->CreateDepthStencilView(mDepthStencilBuffer.Get(), 0, mDepthStencilView.GetAddressOf()));
+
+	mScreenViewport.TopLeftX = 0;
+	mScreenViewport.TopLeftY = 0;
+	mScreenViewport.Width = static_cast<float>(mClientWidth);
+	mScreenViewport.Height = static_cast<float>(mClientHeight);
+	mScreenViewport.MinDepth = 0.0f;
+	mScreenViewport.MaxDepth = 1.0f;
 
 	return true;
 }

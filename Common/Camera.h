@@ -14,11 +14,15 @@ public:
 	XMMATRIX GetProj();
 	XMFLOAT3 GetPosition();
 	XMFLOAT3 GetY();
+	float GetFarZ();
 protected:
 	XMFLOAT3 mPosition = { 0.0f, 0.0f, 0.0f };
 	XMFLOAT3 mRight = { 1.0f, 0.0f, 0.0f };
 	XMFLOAT3 mUp = { 0.0f, 1.0f, 0.0f };
 	XMFLOAT3 mForward = { 0.0f, 0.0f, 1.0f };
+
+	float mNearZ = 0.0f;
+	float mFarZ = 0.0f;
 
 	XMFLOAT4X4 mView = MathHelper::Identity4x4();
 	XMFLOAT4X4 mProj = MathHelper::Identity4x4();

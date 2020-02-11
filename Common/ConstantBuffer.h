@@ -3,9 +3,9 @@
 #include <wrl.h>
 #include <DirectXMath.h>
 using namespace DirectX;
-struct DirectionalLight
+struct DirectLightCB
 {
-	DirectionalLight() { ZeroMemory(this, sizeof(this)); }
+	DirectLightCB() { ZeroMemory(this, sizeof(this)); }
 
 	DirectX::XMFLOAT4 LightColor;
 	DirectX::XMFLOAT3 Direction;
@@ -16,8 +16,6 @@ struct Material
 	Material() { ZeroMemory(this, sizeof(this)); }
 	DirectX::XMFLOAT4 _Diffuse;
 	DirectX::XMFLOAT4 _Specular;
-	DirectX::XMFLOAT2 _offset;
-	DirectX::XMFLOAT2 _tiling;
 };
 struct Shader
 {
@@ -44,18 +42,38 @@ struct Shader
 struct Texture
 {
 	std::string name;
+	XMFLOAT4 uvST = XMFLOAT4(1, 1, 0, 0);
 	Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> mTextureView;
 };
 struct ObjectConstant
 {
-	XMFLOAT4X4 MVP = MathHelper::Identity4x4();
 	XMFLOAT4X4 gModel;
+	XMFLOAT4X4 gView;
+	XMFLOAT4X4 gProj;
 	XMFLOAT4X4 gModelInvTranspose;
+	XMFLOAT4X4 gShadowTransform;
+	XMFLOAT4 uvST;//xy通道用于tiling,zw通道offset
+};
+struct SkyBoxConstant
+{
+	XMFLOAT4X4 gModel;
+	XMFLOAT4X4 gView;
+	XMFLOAT4X4 gProj;
+};
+struct SSAOConstant
+{
+	XMFLOAT4X4 gView;
+	XMFLOAT4X4 gProj;
+	XMFLOAT4X4 gViewInvTranspose;
+	XMFLOAT4 gOffset[64];
+};
+struct SSSMConstant
+{
 	XMFLOAT4X4 gShadowTransform;
 };
 struct ObjectLight
 {
-	DirectionalLight gDirLight;
+	DirectLightCB gDirLight;
 	Material gMaterial;
 	XMFLOAT3 gEyePos;
 	float pad;

@@ -2,17 +2,16 @@
 #include "d3dApp.h"
 #include "RenderItem.h"
 #include "Camera.h"
+#include "DirectionLight.h"
 #include "ShadowMap.h"
+#include "Gbuffer.h"
+#include "Ssao.h"
+#include "LightBuffer.h"
 using namespace DirectX;
 enum CameraMode
 {
 	First,
 	Third 
-};
-struct BoundingSphere
-{
-	float Radius;
-	XMFLOAT3 Center;
 };
 class GameMain : public D3DApp
 {
@@ -20,36 +19,46 @@ public:
 	GameMain(HINSTANCE hInstance);
 	~GameMain();
 	//主要运行函数
-	bool Init(); 
-	void OnResize();
-	void UpdateScene(float dt);
-	void DrawScene();
+	bool Init()override;
+	void UpdateScene(float dt)override;
+	void DrawScene()override;
 
-	void OnMouseMove(WPARAM btnState, int x, int y) override;
-	void OnMouseWheel(WPARAM btnState) override;
+	void OnMouseMove(WPARAM btnState, int x, int y) override;//鼠标移动事件
+	void OnMouseWheel(WPARAM btnState) override;//鼠标滚轮事件
+	//主角,摄像机,灯光控制逻辑
 	void PlayerControl(const float dt);
 	void CameraControl(const float dt);
 	void LightControl(const float dt);
 private:
 	void BuildGeometry(); //初始化所用模型数据
 	void BuildShaderAndInputLayout(); //初始化所用着色器
-	void BuildObjectCBuffer(); //创建顶点变换常量缓存区
-	void BuildLightCBuffer(); //创建光照计算常量缓存区
+	void BuildObjectVsCBuffer(); //创建顶点常量缓存区
+	void BuildObjectPsCBuffer(); //创建片元常量缓存区
 	void BuildTexture(); //初始化所用贴图数据
-	void BuildRenderItem(); //场景中所有渲染项设置
-	void BuildLightAndMaterial(); //初始化灯光属性和所用材质
+	void BuildRenderItem(); //场景中所有物体渲染项设置
+	void BuildMaterial(); //初始化所用材质
+	void BuildLight(); //初始化灯光属性
 	void BuildCamera(); 
 
 	//更新所用到的常量缓存区数据
-	void UpdateLightCBuffer(); 
-	void UpdateObjectCBuffer();
-	void UpdateShadowTransform();
+	void UpdateObjectPsCBuffer(); 
+	void UpdateObjectVsCBuffer();
+	void UpdateSkyBoxCBuffer();
+	void UpdateSsaoCBuffer();
+	void UpdateSssmCBuffer();
+	void UpdateLightingPassCBuffer();
 
 	void RenderGeometry(); //渲染场景中的物体
 	void RenderOpaque(); //渲染不透明项
-	void RenderShadow(); //将可投射阴影的物体渲染到阴影贴图
+	void RenderShadow(); //得到光源处深度图
+	void RenderSSSM();//得到屏幕空间阴影映射纹理
 	void RenderSkyBox(); 
-	void RenderDebugWindow(); //渲染调试窗口观察灯光角度的深度图
+	void RenderDebugWindow(); //渲染调试窗口
+	void RenderGbuffer();//渲染Gbuffer
+	void RenderSSAO();
+	void RenderLightingPass();
+	void RenderFXAA();
+	void RenderPostProcessing();
 private:
 
 	//存储所有可能用到的材质、贴图、着色器、几何数据
@@ -69,26 +78,37 @@ private:
 	float mMaxVelocity = 35.0f;
 
 	std::shared_ptr<RenderItem> mSkyBox;
-	std::shared_ptr<RenderItem> mDebugWindow;
+	std::vector<std::shared_ptr<RenderItem>> mDebugWindows;
 	std::vector<std::shared_ptr<RenderItem>> GameObjects;
 
 	//第一人称和第三人称摄像机参数
 	FirstPersonCamera mFirstCamera;
 	ThirdPersonCamera mThirdCamera;
-	CameraMode cameraMode = Third;
+	CameraMode cameraMode = Third;//默认第三人称
 	XMMATRIX mCameraView;
 	XMMATRIX mCameraProj;
-	 
-	DirectionalLight DirectLight;
 	XMFLOAT3 EyePos;
 
 	//阴影效果参数
 	std::unique_ptr<ShadowMap> mShadowMap;
-	BoundingSphere mSceneBound;
-	XMMATRIX mLightView ;
-	XMMATRIX mLightProj ;
-	XMFLOAT4X4 mShadowTransform = MathHelper::Identity4x4();
+	std::shared_ptr<RenderItem> mShadowPostQuad; //延迟渲染SSSM
 	bool DrawShadow = false;
+	//平行光
+	std::unique_ptr<DirectionLight> mDirectionLight;
+
+	//Gbuffer
+	std::unique_ptr<Gbuffer> mGbuffer;
+
+	//SSAO
+	std::shared_ptr<RenderItem> mAoPostQuad;
+	std::unique_ptr<Ssao> mSSAOMap;
+
+	//LightingPass
+	std::shared_ptr<RenderItem> mLightingPassPostQuad;
+	std::unique_ptr<LightBuffer> mLightBuffer;
+
+	//FXAA
+	std::shared_ptr<RenderItem> mFxaaPostQuad;
 
 	POINT mLastMousePos;
 	float mLastDelta;
@@ -145,6 +165,7 @@ void GameMain::BuildGeometry()
 	player->SetBuffer(md3dDevice.Get(), Meshdatas_Player);
 	mGeometries[player->name] = std::move(player);
 #pragma endregion
+
 #pragma region floor
 
 	std::vector<GeometryGenerator::MeshData> Meshdatas_Floor;
@@ -158,10 +179,24 @@ void GameMain::BuildGeometry()
 	floor->SetBuffer(md3dDevice.Get(), Meshdatas_Floor);
 	mGeometries[floor->name] = std::move(floor);
 #pragma endregion
+
 #pragma region DebugWindow
 	std::vector<GeometryGenerator::MeshData> Meshdatas_DebugWindow;
 	geoGen.CreateScreenQuad(quad, 0.2, XMFLOAT2(0.8, -0.8));
-	quad.name = "quad";
+	quad.name = "quad"; //阴影
+	Meshdatas_DebugWindow.push_back(quad);
+	geoGen.CreateScreenQuad(quad, 0.2, XMFLOAT2(-0.8, -0.8));
+	quad.name = "quad1";//颜色
+	Meshdatas_DebugWindow.push_back(quad);
+	geoGen.CreateScreenQuad(quad, 0.2, XMFLOAT2(-0.4, -0.8));
+	quad.name = "quad2";//法线
+	Meshdatas_DebugWindow.push_back(quad);
+	geoGen.CreateScreenQuad(quad, 0.2, XMFLOAT2(0, -0.8));
+	quad.name = "quad3";//位置
+	Meshdatas_DebugWindow.push_back(quad);
+	geoGen.CreateScreenQuad(quad, 0.2, XMFLOAT2(0.4, -0.8));
+	//geoGen.CreateScreenQuad(quad, 0.5, XMFLOAT2(0, 0));
+	quad.name = "quad4";//Ao
 	Meshdatas_DebugWindow.push_back(quad);
 	auto debugwindow = std::make_unique<MeshGeometry>();
 	debugwindow->name = "DebugWindow";
@@ -170,6 +205,7 @@ void GameMain::BuildGeometry()
 	debugwindow->SetBuffer(md3dDevice.Get(), Meshdatas_DebugWindow);
 	mGeometries[debugwindow->name] = std::move(debugwindow);
 #pragma endregion
+
 #pragma region SkyBox
 	std::vector<GeometryGenerator::MeshData> Meshdatas_SkyBox;
 	geoGen.CreateBox(200.0f, 200.0f, 200.0f, box);
@@ -182,12 +218,25 @@ void GameMain::BuildGeometry()
 	skybox->SetBuffer(md3dDevice.Get(), Meshdatas_SkyBox);
 	mGeometries[skybox->name] = std::move(skybox);
 #pragma endregion
+
+#pragma region PostQuad
+	std::vector<GeometryGenerator::MeshData> Meshdatas_PostQuad;
+	geoGen.CreateScreenQuad(quad, 1.0f, XMFLOAT2(0, 0));
+	quad.name = "quad";
+	Meshdatas_PostQuad.push_back(quad);
+	auto postquad= std::make_unique<MeshGeometry>();
+	postquad->name = "PostQuad";
+	postquad->Stride = sizeof(Vertex);
+	postquad->Offet = 0;
+	postquad->SetBuffer(md3dDevice.Get(), Meshdatas_PostQuad);
+	mGeometries[postquad->name] = std::move(postquad);
+#pragma endregion
 }
 void GameMain::BuildShaderAndInputLayout()
 {
-	auto Color = std::make_unique<Shader>();
-	Color->name = "Color";
-	Color->CreatShaderAndLayout(md3dDevice.Get(), L"shader\\Color.hlsl");
+	auto ForwardDefault = std::make_unique<Shader>();
+	ForwardDefault->name = "ForwardDefault";
+	ForwardDefault->CreatShaderAndLayout(md3dDevice.Get(), L"shader\\ForwardDefault.hlsl");
 
 	auto Sky = std::make_unique<Shader>();
 	Sky->name = "Sky";
@@ -197,29 +246,67 @@ void GameMain::BuildShaderAndInputLayout()
 	LightDepth->name = "LightDepth";
 	LightDepth->CreatShaderAndLayout(md3dDevice.Get(), L"shader\\LightDepth.hlsl");
 
-	auto DebugShadow = std::make_unique<Shader>();
-	DebugShadow->name = "DebugShadow";
-	DebugShadow->CreatShaderAndLayout(md3dDevice.Get(), L"shader\\DebugShadow.hlsl");
+	auto DebugSingleRT = std::make_unique<Shader>();
+	DebugSingleRT->name = "DebugSingleRT";
+	DebugSingleRT->CreatShaderAndLayout(md3dDevice.Get(), L"shader\\DebugSingleRT.hlsl");
 
-	mShaders[Color->name] = std::move(Color);
+	auto DebugRT = std::make_unique<Shader>();
+	DebugRT->name = "DebugRT";
+	DebugRT->CreatShaderAndLayout(md3dDevice.Get(), L"shader\\DebugRT.hlsl");
+
+	auto DrawGbuffer = std::make_unique<Shader>();
+	DrawGbuffer->name = "DrawGbuffer";
+	DrawGbuffer->CreatShaderAndLayout(md3dDevice.Get(), L"shader\\DrawGbuffer.hlsl");
+
+	auto DrawSSAO = std::make_unique<Shader>();
+	DrawSSAO->name = "DrawSSAO";
+	DrawSSAO->CreatShaderAndLayout(md3dDevice.Get(), L"shader\\DrawSSAO.hlsl");
+
+	auto BlurSSAO = std::make_unique<Shader>();
+	BlurSSAO->name = "BlurSSAO";
+	BlurSSAO->CreatShaderAndLayout(md3dDevice.Get(), L"shader\\BlurSSAO.hlsl");
+
+	auto DrawSSSM = std::make_unique<Shader>();
+	DrawSSSM->name = "DrawSSSM";
+	DrawSSSM->CreatShaderAndLayout(md3dDevice.Get(), L"shader\\DrawSSSM.hlsl");
+
+	auto LightingPass = std::make_unique<Shader>();
+	LightingPass->name = "LightingPass";
+	LightingPass->CreatShaderAndLayout(md3dDevice.Get(), L"shader\\DefferredLightPass.hlsl");
+
+	auto FXAA = std::make_unique<Shader>();
+	FXAA->name = "FXAA";
+	FXAA->CreatShaderAndLayout(md3dDevice.Get(), L"shader\\FXAA.hlsl");
+
+	mShaders[ForwardDefault->name] = std::move(ForwardDefault);
 	mShaders[Sky->name] = std::move(Sky);
 	mShaders[LightDepth->name] = std::move(LightDepth);
-	mShaders[DebugShadow->name] = std::move(DebugShadow);
+	mShaders[DebugSingleRT->name] = std::move(DebugSingleRT);
+	mShaders[DebugRT->name] = std::move(DebugRT);
+	mShaders[DrawGbuffer->name] = std::move(DrawGbuffer);
+	mShaders[DrawSSAO->name] = std::move(DrawSSAO);
+	mShaders[BlurSSAO->name] = std::move(BlurSSAO);
+	mShaders[DrawSSSM->name] = std::move(DrawSSSM);
+	mShaders[LightingPass->name] = std::move(LightingPass);
+	mShaders[FXAA->name] = std::move(FXAA);
 }
-void GameMain::BuildObjectCBuffer()
+void GameMain::BuildObjectVsCBuffer()
 {
 	for (auto &e : GameObjects)
 	{
-		e->CreatObjectCBuffer(md3dDevice.Get(), sizeof(ObjectConstant));
+		e->CreatObjectVsCBuffer(md3dDevice.Get(), sizeof(ObjectConstant));
 	}
-	mSkyBox->CreatObjectCBuffer(md3dDevice.Get(), sizeof(ObjectConstant));
+	mSkyBox->CreatObjectVsCBuffer(md3dDevice.Get(), sizeof(SkyBoxConstant));
 }
-void GameMain::BuildLightCBuffer()
+void GameMain::BuildObjectPsCBuffer()
 {
 	for (auto &e : GameObjects)
 	{
-		e->CreatLightCBuffer(md3dDevice.Get(), sizeof(ObjectConstant));
+		e->CreatObjectPsCBuffer(md3dDevice.Get(), sizeof(ObjectLight));
 	}
+	mAoPostQuad->CreatObjectPsCBuffer(md3dDevice.Get(), sizeof(SSAOConstant));
+	mShadowPostQuad->CreatObjectPsCBuffer(md3dDevice.Get(), sizeof(SSSMConstant));
+	mLightingPassPostQuad->CreatObjectPsCBuffer(md3dDevice.Get(), sizeof(ObjectLight));
 }
 void GameMain::BuildTexture()
 {
@@ -233,51 +320,96 @@ void GameMain::BuildTexture()
 
 	auto floor = std::make_unique<Texture>();
 	floor->name = "floor";
+	floor->uvST = XMFLOAT4(4, 4, 0, 0);
 	HR(CreateDDSTextureFromFile(md3dDevice.Get(), L"Tex\\floor.dds", nullptr, floor->mTextureView.GetAddressOf()));
 
 	auto sky = std::make_unique<Texture>();
 	sky->name = "skybox";
 	HR(CreateDDSTextureFromFile(md3dDevice.Get(), L"Tex\\skybox.dds", nullptr, sky->mTextureView.GetAddressOf()));
 
-	auto shadowMap = std::make_unique<ShadowMap>(md3dDevice.Get(), 4096, 4096);
-	mShadowMap = std::move(shadowMap);
+	mShadowMap = std::make_unique<ShadowMap>(md3dDevice.Get(), 4096, 4096, mClientWidth, mClientWidth);
 	auto shadow = std::make_unique<Texture>();
 	shadow->name = "shadow";
 	shadow->mTextureView = mShadowMap->mSRV;
+	auto SSSM = std::make_unique<Texture>();
+	SSSM->name = "SSSM";
+	SSSM->mTextureView = mShadowMap->mScreenSpaceShadowMapSRV;
+
+	//按后台缓存区大小渲染Gbuffer
+	mGbuffer = std::make_unique<Gbuffer>(md3dDevice.Get(), mClientWidth, mClientHeight);
+	auto defferredDiffuseMap = std::make_unique<Texture>();
+	defferredDiffuseMap->name = "defferredDiffuseMap";
+	defferredDiffuseMap->mTextureView = mGbuffer->mSRVs[0];//与写入Gbuffer MRT索引吻合
+	auto defferredNormalMap = std::make_unique<Texture>();
+	defferredNormalMap->name = "defferredNormalDepthMap";
+	defferredNormalMap->mTextureView = mGbuffer->mSRVs[1];
+	auto defferredPositionMap= std::make_unique<Texture>();
+	defferredPositionMap->name = "defferredPositionMap";
+	defferredPositionMap->mTextureView = mGbuffer->mSRVs[2];
+
+	mSSAOMap = std::make_unique<Ssao>(md3dDevice.Get(), mClientWidth, mClientHeight);
+	auto ssaoMap = std::make_unique<Texture>();
+	ssaoMap->name = "SSAO";
+	ssaoMap->mTextureView = mSSAOMap->mAoSRV;
+	auto randVecMap = std::make_unique<Texture>();
+	randVecMap->name = "RandVectorMap";
+	randVecMap->mTextureView = mSSAOMap->mRandSRV;
+	auto BlurSSAOMap = std::make_unique<Texture>();
+	BlurSSAOMap->name = "BlurSSAOMap";
+	BlurSSAOMap->mTextureView = mSSAOMap->mAoBlurSRV;
+
+	mLightBuffer = std::make_unique<LightBuffer>(md3dDevice.Get(), mClientWidth, mClientHeight);
+	auto LightBufferMap = std::make_unique<Texture>();
+	LightBufferMap->name = "LightBuffer";
+	LightBufferMap->mTextureView = mLightBuffer->mSRV;
 
 	mTextures[sky->name] = std::move(sky);
 	mTextures[zero->name] = std::move(zero);
 	mTextures[wheel->name] = std::move(wheel);
 	mTextures[floor->name] = std::move(floor);
 	mTextures[shadow->name] = std::move(shadow);
+	mTextures[SSSM->name] = std::move(SSSM);
+	mTextures[defferredDiffuseMap->name] = std::move(defferredDiffuseMap);
+	mTextures[defferredNormalMap->name] = std::move(defferredNormalMap);
+	mTextures[defferredPositionMap->name] = std::move(defferredPositionMap);
+	mTextures[ssaoMap->name] = std::move(ssaoMap);
+	mTextures[BlurSSAOMap->name] = std::move(BlurSSAOMap);
+	mTextures[randVecMap->name] = std::move(randVecMap);
+	mTextures[LightBufferMap->name] = std::move(LightBufferMap);
 }
-void GameMain::BuildLightAndMaterial()
+void GameMain::BuildLight()
 {
-	DirectLight.Direction = XMFLOAT3(0.8f, 0.5f, 0.5f);
-	DirectLight.LightColor = XMFLOAT4(0.8f, 0.8f, 0.7f, 1.0f);
-
+	XMFLOAT4 LightColor= XMFLOAT4(0.7f, 0.7f, 0.6f, 1.0f);
+	XMFLOAT3 LightDirection = XMFLOAT3(0.8f, 0.5f, 0.5f);
+	//根据场景最宽的物体决定包围球大小
+	float SphereRadius = sqrt(50 * 50 + 50 * 50);
+	auto directLight = std::make_unique<DirectionLight>(LightColor, LightDirection);
+	directLight->SetLightBounding(XMFLOAT3(0, 0, 0), SphereRadius);
+	directLight->SetLightViewAndProj();
+	mDirectionLight = std::move(directLight);
+}
+void GameMain::BuildMaterial()
+{
 	auto zero = std::make_unique<Material>();
 	zero->_Diffuse = XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f);
-	zero->_Specular = XMFLOAT4(0.5f, 0.5f, 0.5f, 1.0f);
-	zero->_offset = XMFLOAT2(0, 0);
-	zero->_tiling = XMFLOAT2(1, 1);
+	zero->_Specular = XMFLOAT4(0.2f, 0.2f, 0.2f, 1.0f);
 
 	auto floor = std::make_unique<Material>();
 	floor->_Diffuse = XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f);
-	floor->_Specular = XMFLOAT4(0.5f, 0.5f, 0.5f, 1.0f);
-	floor->_offset = XMFLOAT2(0, 0);
-	floor->_tiling = XMFLOAT2(3, 3);
+	floor->_Specular = XMFLOAT4(0.3f, 0.3f, 0.3f, 1.0f);
 
 	mMaterials["zero"] = std::move(zero);
 	mMaterials["floor"] = std::move(floor);
 }
 void GameMain::BuildRenderItem()
 {
+
+#pragma region SceneObject
 	auto bodyObject = std::make_shared<RenderItem>();
 	bodyObject->mesh = mGeometries["Player"].get();
 	bodyObject->mat = mMaterials["zero"].get();
 	bodyObject->tex = mTextures["zero"].get();
-	bodyObject->shader = mShaders["Color"].get();
+	bodyObject->shader = mShaders["ForwardDefault"].get();
 	bodyObject->SetMeshAgrs("box");
 	mPlayer = bodyObject;
 	GameObjects.push_back(bodyObject);
@@ -286,7 +418,7 @@ void GameMain::BuildRenderItem()
 	flwheelObject->mesh = mGeometries["Player"].get();
 	flwheelObject->mat = mMaterials["zero"].get();
 	flwheelObject->tex = mTextures["wheel"].get();
-	flwheelObject->shader = mShaders["Color"].get();
+	flwheelObject->shader = mShaders["ForwardDefault"].get();
 	flwheelObject->SetMeshAgrs("cylinder");
 	mFrontLeftWheel = flwheelObject;
 	GameObjects.push_back(flwheelObject);
@@ -295,7 +427,7 @@ void GameMain::BuildRenderItem()
 	frwheelObject->mesh = mGeometries["Player"].get();
 	frwheelObject->mat = mMaterials["zero"].get();
 	frwheelObject->tex = mTextures["wheel"].get();
-	frwheelObject->shader = mShaders["Color"].get();
+	frwheelObject->shader = mShaders["ForwardDefault"].get();
 	frwheelObject->SetMeshAgrs("cylinder");
 	mFrontRightWheel = frwheelObject;
 	GameObjects.push_back(frwheelObject);
@@ -304,7 +436,7 @@ void GameMain::BuildRenderItem()
 	blwheelObject->mesh = mGeometries["Player"].get();
 	blwheelObject->mat = mMaterials["zero"].get();
 	blwheelObject->tex = mTextures["wheel"].get();
-	blwheelObject->shader = mShaders["Color"].get();
+	blwheelObject->shader = mShaders["ForwardDefault"].get();
 	blwheelObject->SetMeshAgrs("cylinder");
 	mBackLeftWheel = blwheelObject;
 	GameObjects.push_back(blwheelObject);
@@ -313,7 +445,7 @@ void GameMain::BuildRenderItem()
 	brwheelObject->mesh = mGeometries["Player"].get();
 	brwheelObject->mat = mMaterials["zero"].get();
 	brwheelObject->tex = mTextures["wheel"].get();
-	brwheelObject->shader = mShaders["Color"].get();
+	brwheelObject->shader = mShaders["ForwardDefault"].get();
 	brwheelObject->SetMeshAgrs("cylinder");
 	mBackRightWheel = brwheelObject;
 	GameObjects.push_back(brwheelObject);
@@ -323,16 +455,9 @@ void GameMain::BuildRenderItem()
 	gridObject->mesh = mGeometries["Floor"].get();
 	gridObject->mat = mMaterials["floor"].get();
 	gridObject->tex = mTextures["floor"].get();
-	gridObject->shader = mShaders["Color"].get();
+	gridObject->shader = mShaders["ForwardDefault"].get();
 	gridObject->SetMeshAgrs("grid");
 	GameObjects.push_back(gridObject);
-
-	auto DebugObject = std::make_shared<RenderItem>();
-	DebugObject->mesh = mGeometries["DebugWindow"].get();
-	DebugObject->tex = mTextures["shadow"].get();
-	DebugObject->shader = mShaders["DebugShadow"].get();
-	DebugObject->SetMeshAgrs("quad");
-	mDebugWindow = DebugObject;
 
 	auto SkyObject = std::make_shared<RenderItem>();
 	SkyObject->mesh = mGeometries["SkyBox"].get();
@@ -340,37 +465,88 @@ void GameMain::BuildRenderItem()
 	SkyObject->shader = mShaders["Sky"].get();
 	SkyObject->SetMeshAgrs("box");
 	mSkyBox = SkyObject;
+#pragma endregion
 
-	BuildObjectCBuffer();
-	BuildLightCBuffer();
+#pragma region PostProcessingQuad
+	//全屏quad进行后处理效果
+	auto AoQuadObject = std::make_shared<RenderItem>();
+	AoQuadObject->mesh = mGeometries["PostQuad"].get();
+	AoQuadObject->tex = mTextures["defferredPositionMap"].get();
+	AoQuadObject->shader = mShaders["DrawSSAO"].get();
+	AoQuadObject->SetMeshAgrs("quad");
+	mAoPostQuad = AoQuadObject;
+
+	auto ShadowQuadObject = std::make_shared<RenderItem>();
+	ShadowQuadObject->mesh = mGeometries["PostQuad"].get();
+	ShadowQuadObject->tex = mTextures["defferredPositionMap"].get();
+	ShadowQuadObject->shader = mShaders["DrawSSSM"].get();
+	ShadowQuadObject->SetMeshAgrs("quad");
+	mShadowPostQuad = ShadowQuadObject;
+
+	auto LightingPassQuadObject = std::make_shared<RenderItem>();
+	LightingPassQuadObject->mesh = mGeometries["PostQuad"].get();
+	LightingPassQuadObject->tex = mTextures["defferredPositionMap"].get();
+	LightingPassQuadObject->shader = mShaders["LightingPass"].get();
+	LightingPassQuadObject->SetMeshAgrs("quad");
+	mLightingPassPostQuad = LightingPassQuadObject;
+
+	auto FxaaQuadObject = std::make_shared<RenderItem>();
+	FxaaQuadObject->mesh = mGeometries["PostQuad"].get();
+	FxaaQuadObject->tex = mTextures["LightBuffer"].get();
+	FxaaQuadObject->shader = mShaders["FXAA"].get();
+	FxaaQuadObject->SetMeshAgrs("quad");
+	mFxaaPostQuad = FxaaQuadObject;
+#pragma endregion
+
+#pragma region DebugRenderItem
+	auto DebugShadow = std::make_shared<RenderItem>();
+	DebugShadow->mesh = mGeometries["DebugWindow"].get();
+	DebugShadow->tex = mTextures["SSSM"].get();
+	DebugShadow->shader = mShaders["DebugSingleRT"].get();
+	DebugShadow->SetMeshAgrs("quad");
+	mDebugWindows.push_back(DebugShadow);
+
+	auto DebugDiffuse= std::make_shared<RenderItem>();
+	DebugDiffuse->mesh = mGeometries["DebugWindow"].get();
+	DebugDiffuse->tex = mTextures["defferredDiffuseMap"].get();
+	DebugDiffuse->shader = mShaders["DebugRT"].get();
+	DebugDiffuse->SetMeshAgrs("quad1");
+	mDebugWindows.push_back(DebugDiffuse);
+
+	auto DebugNormal = std::make_shared<RenderItem>();
+	DebugNormal->mesh = mGeometries["DebugWindow"].get();
+	DebugNormal->tex = mTextures["defferredNormalDepthMap"].get();
+	DebugNormal->shader = mShaders["DebugRT"].get();
+	DebugNormal->SetMeshAgrs("quad2");
+	mDebugWindows.push_back(DebugNormal);
+
+	auto DebugPosition = std::make_shared<RenderItem>();
+	DebugPosition->mesh = mGeometries["DebugWindow"].get();
+	DebugPosition->tex = mTextures["defferredPositionMap"].get();
+	DebugPosition->shader = mShaders["DebugRT"].get();
+	DebugPosition->SetMeshAgrs("quad3");
+	mDebugWindows.push_back(DebugPosition);
+
+	auto DebugSSAO = std::make_shared<RenderItem>();
+	DebugSSAO->mesh = mGeometries["DebugWindow"].get();
+	DebugSSAO->tex = mTextures["BlurSSAOMap"].get();
+	DebugSSAO->shader = mShaders["DebugSingleRT"].get();
+	DebugSSAO->SetMeshAgrs("quad4");
+	mDebugWindows.push_back(DebugSSAO);
+#pragma endregion
+
+	BuildObjectVsCBuffer();
+	BuildObjectPsCBuffer();
 }
 void GameMain::BuildCamera()
 {
 	mFirstCamera.SetLens(0.25f*MathHelper::Pi, AspectRatio(), 1.0f, 1000.0f);
 	mThirdCamera.SetLens(0.1f*MathHelper::Pi, AspectRatio(), 1.0f, 1000.0f);
 }
-bool GameMain::Init()
-{
-	if (!D3DApp::Init())
-		return false;
-	RenderStates::Init(md3dDevice.Get());
-	mSceneBound.Center = XMFLOAT3(0, 0, 0);
-	//根据最宽的物体网格的大小决定整个场景包围球的大小
-	mSceneBound.Radius = sqrt(50 * 50 + 50 * 50);
-	BuildTexture();
-	BuildShaderAndInputLayout();
-	BuildGeometry();
-	BuildLightAndMaterial();
-	BuildRenderItem();
-	BuildCamera();
-
-	return true;
-}
 void GameMain::OnMouseMove(WPARAM btnState, int x, int y)
 {
 	float dx = XMConvertToRadians(0.25f*static_cast<float>(x - mLastMousePos.x));
 	float dy = XMConvertToRadians(0.25f*static_cast<float>(y - mLastMousePos.y));
-
 	if (cameraMode == First)
 	{
 		mFirstCamera.Pitch(dy);
@@ -381,8 +557,41 @@ void GameMain::OnMouseMove(WPARAM btnState, int x, int y)
 		mThirdCamera.Pitch(dy);
 		mThirdCamera.RotateY(dx);
 	}
-	mLastMousePos.x = x;
-	mLastMousePos.y = y;
+
+	//鼠标在窗口循环
+	POINT ScreenMousePos;
+	GetCursorPos(&ScreenMousePos);
+	RECT rect;
+	GetWindowRect(mhMainWnd, &rect);
+	if (x > mClientWidth-5 && dx>0)
+	{
+		SetCursorPos(rect.left, ScreenMousePos.y);
+		mLastMousePos.x = 0;
+		mLastMousePos.y = y;
+	}
+	else if (x < 5 && dx<0)
+	{
+		SetCursorPos(rect.right, ScreenMousePos.y);
+		mLastMousePos.x = mClientWidth;
+		mLastMousePos.y = y;
+	}
+	else if (y > mClientHeight - 5 && dy > 0)
+	{
+		SetCursorPos(ScreenMousePos.x, rect.top);
+		mLastMousePos.x = x;
+		mLastMousePos.y = 0;
+	}
+	else if (y < 5 && dy < 0)
+	{
+		SetCursorPos(ScreenMousePos.x, rect.bottom);
+		mLastMousePos.x = x;
+		mLastMousePos.y = mClientHeight;
+	}
+	else
+	{
+		mLastMousePos.x = x;
+		mLastMousePos.y = y;
+	}
 }
 void GameMain::OnMouseWheel(WPARAM btnState)
 {
@@ -394,9 +603,10 @@ void GameMain::OnMouseWheel(WPARAM btnState)
 }
 void GameMain::LightControl(const float dt)
 {
-	XMVECTOR Direction = XMLoadFloat3(&DirectLight.Direction);
+	XMVECTOR Direction = XMLoadFloat3(&mDirectionLight->Direction);
 	Direction = XMVector3TransformNormal(Direction, XMMatrixRotationY(0.88f*dt));
-	XMStoreFloat3(&DirectLight.Direction, Direction);
+	XMStoreFloat3(&mDirectionLight->Direction, Direction);
+	mDirectionLight->SetLightViewAndProj();
 }
 void GameMain::CameraControl(const float dt)
 {
@@ -433,7 +643,8 @@ void GameMain::CameraControl(const float dt)
 }
 void GameMain::PlayerControl(const float dt)
 {
-	//设定绑定点,创建绑定点到车身模型空间的变换矩阵
+	//采用网易游戏学院3d基础视频中的绑定方法:
+	//设定绑定点,利用SRT变换顺序创建绑定点到车身模型空间的变换矩阵
 	XMFLOAT3 offset = XMFLOAT3(1.5f, -0.5f, 1.6f);
 	XMVECTOR flBindPos = XMVectorSet(-offset.x, offset.y, offset.z, 1);
 	XMVECTOR frBindPos = XMVectorSet(offset.x, offset.y, offset.z, 1);
@@ -456,25 +667,17 @@ void GameMain::PlayerControl(const float dt)
 		//线性提速
 		mVelocity = MathHelper::Lerp(mVelocity, mMaxVelocity, 0.0005f);
 		if (GetAsyncKeyState('A') & 0x8000)
-		{
 			mSteerAngle -= 0.07f*mVelocity *dt;
-		}
-		else if (GetAsyncKeyState('D') & 0x8000)
-		{
+		if (GetAsyncKeyState('D') & 0x8000)
 			mSteerAngle += 0.07f* mVelocity *dt;
-		}
 	}
 	if (GetAsyncKeyState('S') & 0x8000)
 	{
 		mVelocity = MathHelper::Lerp(mVelocity, -mMaxVelocity, 0.0005f);
 		if (GetAsyncKeyState('A') & 0x8000)
-		{
 			mSteerAngle -= 0.07f*mVelocity * dt;
-		}
 		if (GetAsyncKeyState('D') & 0x8000)
-		{
 			mSteerAngle += 0.07f*mVelocity * dt;
-		}
 	}
 	if (GetAsyncKeyState('A') & 0x8000)
 	{
@@ -497,75 +700,34 @@ void GameMain::PlayerControl(const float dt)
 	XMMATRIX W = Rbody*XMMatrixTranslationFromVector(position);
 	XMStoreFloat3(&mPlayer->mPosition, position);
 	mPlayer->SetWorld(W);
-	//网易游戏学院3d基础视频中的绑定方法:
+
+	//将车轮中心绑定到绑定点此时有
 	//绑定点到车身模型坐标系矩阵*车身世界矩阵=车轮世界矩阵
 	mFrontLeftWheel->SetWorld(XMLoadFloat4x4(&mFrontLeftWheel->LocalToModelMatrix)*W);
 	mFrontRightWheel->SetWorld(XMLoadFloat4x4(&mFrontRightWheel->LocalToModelMatrix)*W);
 	mBackLeftWheel->SetWorld(XMLoadFloat4x4(&mBackLeftWheel->LocalToModelMatrix)*W);
 	mBackRightWheel->SetWorld(XMLoadFloat4x4(&mBackRightWheel->LocalToModelMatrix)*W);
 }
-void GameMain::OnResize()
-{
-	D3DApp::OnResize();	
-	if(cameraMode==First)
-		mFirstCamera.SetLens(0.25f*MathHelper::Pi, AspectRatio(), 1.0f, 1000.0f);
-	if(cameraMode==Third)
-		mThirdCamera.SetLens(0.1f*MathHelper::Pi, AspectRatio(), 1.0f, 1000.0f);
-
-}
-void GameMain::UpdateShadowTransform()
-{
-	XMVECTOR lightDir = XMLoadFloat3(&DirectLight.Direction);
-	XMVECTOR lightPos = 2.0f*mSceneBound.Radius*lightDir;
-	XMVECTOR targetPos = XMLoadFloat3(&mSceneBound.Center);
-	XMVECTOR lightUp = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
-	mLightView = XMMatrixLookAtLH(lightPos, targetPos, lightUp);
-
-	// Transform bounding sphere to light space.
-	XMFLOAT3 sphereCenterLS;
-	XMStoreFloat3(&sphereCenterLS, XMVector3TransformCoord(targetPos, mLightView));
-
-	// Ortho frustum in light space encloses scene.
-	float l = sphereCenterLS.x - mSceneBound.Radius;
-	float b = sphereCenterLS.y - mSceneBound.Radius;
-	float n = sphereCenterLS.z - mSceneBound.Radius;
-	float r = sphereCenterLS.x + mSceneBound.Radius;
-	float t = sphereCenterLS.y + mSceneBound.Radius;
-	float f = sphereCenterLS.z + mSceneBound.Radius;
-	mLightProj = XMMatrixOrthographicOffCenterLH(l, r, b, t, n, f);
-
-	// Transform NDC space [-1,+1]^2 to texture space [0,1]^2
-	XMMATRIX T(
-		0.5f, 0.0f, 0.0f, 0.0f,
-		0.0f, -0.5f, 0.0f, 0.0f,
-		0.0f, 0.0f, 1.0f, 0.0f,
-		0.5f, 0.5f, 0.0f, 1.0f);
-
-	XMMATRIX S = mLightView * mLightProj*T;
-	XMStoreFloat4x4(&mShadowTransform, S);
-}
-void GameMain::UpdateLightCBuffer()
+void GameMain::UpdateObjectPsCBuffer()
 {
 	D3D11_MAPPED_SUBRESOURCE mapData;
 	for (auto &e : GameObjects)
 	{
 		ObjectLight LightData;
-		LightData.gDirLight.Direction = DirectLight.Direction;
-		LightData.gDirLight.LightColor = DirectLight.LightColor;
+		LightData.gDirLight.Direction = mDirectionLight->Direction;
+		LightData.gDirLight.LightColor = mDirectionLight->Color;
 		LightData.gMaterial._Diffuse = e->mat->_Diffuse;
 		LightData.gMaterial._Specular = e->mat->_Specular;
-		LightData.gMaterial._offset = e->mat->_offset;
-		LightData.gMaterial._tiling = e->mat->_tiling;
 		LightData.gEyePos = EyePos;
-		HR(md3dImmediateContext->Map(e->mLightCbuffer.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mapData));
+		HR(md3dImmediateContext->Map(e->mPsCB.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mapData));
 		memcpy_s(mapData.pData, sizeof(LightData), &LightData, sizeof(LightData));
-		md3dImmediateContext->Unmap(e->mLightCbuffer.Get(), 0);
+		md3dImmediateContext->Unmap(e->mPsCB.Get(), 0);
 	}
 }
-void GameMain::UpdateObjectCBuffer()
+void GameMain::UpdateObjectVsCBuffer()
 {
 	D3D11_MAPPED_SUBRESOURCE mapData;
-	UpdateShadowTransform();
+	mShadowMap->UpdateShadowTransform(mDirectionLight->GetLightView(),mDirectionLight->GetLightProj());
 	for (auto &e : GameObjects)
 	{
 		ObjectConstant ObjectData;
@@ -573,53 +735,160 @@ void GameMain::UpdateObjectCBuffer()
 		XMMATRIX view, proj;
 		if (DrawShadow)
 		{
-			view = mLightView;
-			proj = mLightProj;
+			view = mDirectionLight->GetLightView();
+			proj = mDirectionLight->GetLightProj();
 		}
 		else
 		{
 			view = mCameraView;
 			proj = mCameraProj;
 		}
-		XMMATRIX mvp = world * view * proj;
-		XMMATRIX S = XMLoadFloat4x4(&mShadowTransform);
-		XMStoreFloat4x4(&ObjectData.MVP, XMMatrixTranspose(mvp));
+		XMMATRIX S = XMLoadFloat4x4(&mShadowMap->mShadowTransform);
+		ObjectData.uvST = e->tex->uvST;
 		XMStoreFloat4x4(&ObjectData.gModel, XMMatrixTranspose(world));
+		XMStoreFloat4x4(&ObjectData.gView, XMMatrixTranspose(view));
+		XMStoreFloat4x4(&ObjectData.gProj, XMMatrixTranspose(proj));
 		XMStoreFloat4x4(&ObjectData.gModelInvTranspose, XMMatrixInverse(nullptr, world));
 		XMStoreFloat4x4(&ObjectData.gShadowTransform, XMMatrixTranspose(S));
-		HR(md3dImmediateContext->Map(e->mObjectCbuffer.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mapData));
+		HR(md3dImmediateContext->Map(e->mVsCB.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mapData));
 		memcpy_s(mapData.pData, sizeof(ObjectData), &ObjectData, sizeof(ObjectData));
-		md3dImmediateContext->Unmap(e->mObjectCbuffer.Get(), 0);
+		md3dImmediateContext->Unmap(e->mVsCB.Get(), 0);
 	}
 }
-void GameMain::UpdateScene(float dt)
+void GameMain::UpdateSkyBoxCBuffer()
 {
-	PlayerControl(dt);
-	CameraControl(dt);
-	LightControl(dt);
+	SkyBoxConstant VSConstant;
+	XMMATRIX view, proj, world;
+	//天空盒跟随相机
+	XMVECTOR eye = XMLoadFloat3(&EyePos);
+	world = XMMatrixTranslationFromVector(eye);
+	view = mCameraView;
+	proj = mCameraProj;
+	XMStoreFloat4x4(&VSConstant.gModel, XMMatrixTranspose(world));
+	XMStoreFloat4x4(&VSConstant.gView, XMMatrixTranspose(view));
+	XMStoreFloat4x4(&VSConstant.gProj, XMMatrixTranspose(proj));
+	D3D11_MAPPED_SUBRESOURCE mapData;
+	HR(md3dImmediateContext->Map(mSkyBox->mVsCB.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mapData));
+	memcpy_s(mapData.pData, sizeof(VSConstant), &VSConstant, sizeof(VSConstant));
+	md3dImmediateContext->Unmap(mSkyBox->mVsCB.Get(), 0);
+}
+void GameMain::UpdateSsaoCBuffer()
+{
+	SSAOConstant PSConstant;
+	XMMATRIX view, proj;
+	view = mCameraView;
+	proj = mCameraProj;	
+	XMStoreFloat4x4(&PSConstant.gView, XMMatrixTranspose(view));
+	XMStoreFloat4x4(&PSConstant.gProj, XMMatrixTranspose(proj));
+	XMStoreFloat4x4(&PSConstant.gViewInvTranspose, XMMatrixInverse(nullptr, view));
+	for (int i = 0; i < 64; i++)
+	{
+		PSConstant.gOffset[i]=mSSAOMap->mOffsets[i];
+	}
+	D3D11_MAPPED_SUBRESOURCE mapData;
+	HR(md3dImmediateContext->Map(mAoPostQuad->mPsCB.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mapData));
+	memcpy_s(mapData.pData, sizeof(PSConstant), &PSConstant, sizeof(PSConstant));
+	md3dImmediateContext->Unmap(mAoPostQuad->mPsCB.Get(), 0);
+}
+void GameMain::UpdateSssmCBuffer()
+{
+	SSSMConstant PsConstant;
+	mShadowMap->UpdateShadowTransform(mDirectionLight->GetLightView(), mDirectionLight->GetLightProj());
+	XMMATRIX S = XMLoadFloat4x4(&mShadowMap->mShadowTransform);
+	XMStoreFloat4x4(&PsConstant.gShadowTransform, XMMatrixTranspose(S));
+	D3D11_MAPPED_SUBRESOURCE mapData;
+	HR(md3dImmediateContext->Map(mShadowPostQuad->mPsCB.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mapData));
+	memcpy_s(mapData.pData, sizeof(PsConstant), &PsConstant, sizeof(PsConstant));
+	md3dImmediateContext->Unmap(mShadowPostQuad->mPsCB.Get(), 0);
+}
+void GameMain::UpdateLightingPassCBuffer()
+{
+	ObjectLight LightData;
+	LightData.gDirLight.Direction = mDirectionLight->Direction;
+	LightData.gDirLight.LightColor = mDirectionLight->Color;
+	LightData.gMaterial._Diffuse = mMaterials["zero"]->_Diffuse;
+	LightData.gMaterial._Specular = mMaterials["zero"]->_Specular;
+	LightData.gEyePos = EyePos;
+	D3D11_MAPPED_SUBRESOURCE mapData;
+	HR(md3dImmediateContext->Map(mLightingPassPostQuad->mPsCB.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mapData));
+	memcpy_s(mapData.pData, sizeof(LightData), &LightData, sizeof(LightData));
+	md3dImmediateContext->Unmap(mLightingPassPostQuad->mPsCB.Get(), 0);
 }
 void GameMain::RenderGeometry()
 {
-	UpdateObjectCBuffer();
-	UpdateLightCBuffer();
+	UpdateObjectVsCBuffer();
+	UpdateObjectPsCBuffer();
 	for (auto &e : GameObjects)
 	{
 		e->SetRenderDefaultAgrs(md3dImmediateContext.Get());
-		md3dImmediateContext->PSSetShaderResources(1, 1, mShadowMap->mSRV.GetAddressOf());
+		md3dImmediateContext->PSSetShaderResources(1, 1, mTextures["shadow"]->mTextureView.GetAddressOf());
 		md3dImmediateContext->PSSetSamplers(1, 1, RenderStates::ComparisonState.GetAddressOf());
 		md3dImmediateContext->DrawIndexed(e->IndexCount, e->StartIndexLocation, e->BaseVertexLocation);
 	}
 }
 void GameMain::RenderDebugWindow()
 {
-	mDebugWindow->SetRenderDefaultAgrs(md3dImmediateContext.Get());
-	md3dImmediateContext->DrawIndexed(mDebugWindow->IndexCount, mDebugWindow->StartIndexLocation, mDebugWindow->BaseVertexLocation);
+	for (auto &e : mDebugWindows)
+	{
+		e->SetRenderDefaultAgrs(md3dImmediateContext.Get());
+		md3dImmediateContext->DrawIndexed(e->IndexCount, e->StartIndexLocation, e->BaseVertexLocation);
+	}
+
+}
+void GameMain::RenderGbuffer()
+{
+	md3dImmediateContext->RSSetViewports(1, &mGbuffer->mViewPort);
+	md3dImmediateContext->RSSetState(nullptr);
+	md3dImmediateContext->OMSetDepthStencilState(nullptr, 0);
+	md3dImmediateContext->OMSetRenderTargets(BUFFER_COUNT, mGbuffer->mRTVs[0].GetAddressOf(), mGbuffer->mDSV.Get());
+	md3dImmediateContext->ClearDepthStencilView(mGbuffer->mDSV.Get(), D3D11_CLEAR_DEPTH | D3D11_CLEAR_STENCIL, 1.0f, 0);
+	if (cameraMode == First)
+		mGbuffer->ClearRenderTargets(md3dImmediateContext.Get(), mFirstCamera.GetFarZ());
+	if (cameraMode == Third)
+		mGbuffer->ClearRenderTargets(md3dImmediateContext.Get(), mThirdCamera.GetFarZ());
+
+	for (auto &e : GameObjects)
+	{
+		e->shader = mShaders["DrawGbuffer"].get();
+	}
+	RenderGeometry();
+}
+void GameMain::RenderSSAO()
+{
+	float Black[] = { 0,0,0,1 };
+	md3dImmediateContext->RSSetViewports(1, &mSSAOMap->mViewPort);
+	md3dImmediateContext->RSSetState(nullptr);
+
+	UpdateSsaoCBuffer();
+
+	md3dImmediateContext->OMSetRenderTargets(1, mSSAOMap->mAoRTV.GetAddressOf(),0);
+	md3dImmediateContext->ClearRenderTargetView(mSSAOMap->mAoRTV.Get(), Black);
+	mAoPostQuad->shader = mShaders["DrawSSAO"].get();
+	mAoPostQuad->SetRenderDefaultAgrs(md3dImmediateContext.Get());
+	md3dImmediateContext->PSSetSamplers(0, 1, RenderStates::LinearClamp.GetAddressOf());
+	md3dImmediateContext->PSSetShaderResources(1, 1, mTextures["defferredNormalDepthMap"]->mTextureView.GetAddressOf());
+	md3dImmediateContext->PSSetShaderResources(2, 1, mTextures["RandVectorMap"]->mTextureView.GetAddressOf());
+	md3dImmediateContext->DrawIndexed(mAoPostQuad->IndexCount, mAoPostQuad->StartIndexLocation, mAoPostQuad->BaseVertexLocation);
+
+	md3dImmediateContext->OMSetRenderTargets(1, mSSAOMap->mAoBlurRTV.GetAddressOf(),0);
+	md3dImmediateContext->ClearRenderTargetView(mSSAOMap->mAoBlurRTV.Get(), Black);
+	mAoPostQuad->shader = mShaders["BlurSSAO"].get();
+	mAoPostQuad->SetRenderDefaultAgrs(md3dImmediateContext.Get());
+	md3dImmediateContext->PSSetSamplers(0, 1, RenderStates::LinearClamp.GetAddressOf());
+	md3dImmediateContext->PSSetShaderResources(1, 1, mTextures["defferredNormalDepthMap"]->mTextureView.GetAddressOf());
+	md3dImmediateContext->PSSetShaderResources(0, 1, mTextures["SSAO"]->mTextureView.GetAddressOf());
+	md3dImmediateContext->DrawIndexed(mAoPostQuad->IndexCount, mAoPostQuad->StartIndexLocation, mAoPostQuad->BaseVertexLocation);
+
+
 }
 void GameMain::RenderShadow()
 {
 	md3dImmediateContext->RSSetState(RenderStates::DepthBias.Get());
 	md3dImmediateContext->OMSetDepthStencilState(nullptr, 0);
 
+	md3dImmediateContext->OMSetRenderTargets(0, 0, mShadowMap->mDSV.Get());
+	md3dImmediateContext->RSSetViewports(1, &mShadowMap->mShadowMapViewPort);
+	md3dImmediateContext->ClearDepthStencilView(mShadowMap->mDSV.Get(), D3D11_CLEAR_DEPTH | D3D11_CLEAR_STENCIL, 1.0f, 0);
 	for (auto &e : GameObjects)
 	{
 		e->shader = mShaders["LightDepth"].get();
@@ -627,60 +896,141 @@ void GameMain::RenderShadow()
 
 	DrawShadow = true;
 	RenderGeometry();
+	RenderSSSM();
+	DrawShadow = false;
+}
+void GameMain::RenderSSSM()
+{
+	float Black[] = { 0,0,0,1 };
+	md3dImmediateContext->RSSetState(nullptr);
+
+	UpdateSssmCBuffer();
+
+	md3dImmediateContext->OMSetRenderTargets(1, mShadowMap->mScreenSpaceShadowMapRTV.GetAddressOf(), 0);
+	md3dImmediateContext->RSSetViewports(1, &mShadowMap->mScreenSpaceShadowMapViewPort);
+	md3dImmediateContext->ClearRenderTargetView(mShadowMap->mScreenSpaceShadowMapRTV.Get(), Black);
+	mShadowPostQuad->SetRenderDefaultAgrs(md3dImmediateContext.Get());
+	md3dImmediateContext->PSSetSamplers(0, 1, RenderStates::LinearClamp.GetAddressOf());
+	md3dImmediateContext->PSSetSamplers(1, 1, RenderStates::ComparisonState.GetAddressOf());
+	md3dImmediateContext->PSSetShaderResources(1, 1, mTextures["shadow"]->mTextureView.GetAddressOf());
+	md3dImmediateContext->DrawIndexed(mShadowPostQuad->IndexCount, mShadowPostQuad->StartIndexLocation, mShadowPostQuad->BaseVertexLocation);
+
+}
+void GameMain::RenderLightingPass()
+{
+	float Black[] = { 0,0,0,1 };
+	md3dImmediateContext->RSSetState(nullptr);
+	md3dImmediateContext->OMSetRenderTargets(1, mLightBuffer->mRTV.GetAddressOf(), 0);
+	md3dImmediateContext->ClearRenderTargetView(mRenderTargetView.Get(), Black);
+	md3dImmediateContext->RSSetViewports(1, &mLightBuffer->mViewPort);
+
+	UpdateLightingPassCBuffer();
+
+	mLightingPassPostQuad->SetRenderDefaultAgrs(md3dImmediateContext.Get());
+	md3dImmediateContext->PSSetSamplers(0, 1, RenderStates::LinearClamp.GetAddressOf());
+	md3dImmediateContext->PSSetShaderResources(1, 1, mTextures["defferredNormalDepthMap"]->mTextureView.GetAddressOf());
+	md3dImmediateContext->PSSetShaderResources(2, 1, mTextures["BlurSSAOMap"]->mTextureView.GetAddressOf());
+	md3dImmediateContext->PSSetShaderResources(3, 1, mTextures["SSSM"]->mTextureView.GetAddressOf());
+	md3dImmediateContext->PSSetShaderResources(4, 1, mTextures["defferredDiffuseMap"]->mTextureView.GetAddressOf());
+	md3dImmediateContext->DrawIndexed(mLightingPassPostQuad->IndexCount, mLightingPassPostQuad->StartIndexLocation, mLightingPassPostQuad->BaseVertexLocation);
+}
+void GameMain::RenderFXAA()
+{
+	float Black[] = { 0,0,0,1 };
+	md3dImmediateContext->RSSetState(nullptr);
+	md3dImmediateContext->OMSetDepthStencilState(RenderStates::DisableDepthBuffer.Get(), 0);
+	md3dImmediateContext->OMSetRenderTargets(1, mRenderTargetView.GetAddressOf(), mDepthStencilView.Get());
+	md3dImmediateContext->ClearRenderTargetView(mRenderTargetView.Get(), Black);
+	md3dImmediateContext->RSSetViewports(1, &mScreenViewport);
+	md3dImmediateContext->ClearDepthStencilView(mDepthStencilView.Get(), D3D11_CLEAR_DEPTH | D3D11_CLEAR_STENCIL, 1.0f, 0);
+
+	mFxaaPostQuad->SetRenderDefaultAgrs(md3dImmediateContext.Get());
+	md3dImmediateContext->PSSetSamplers(0, 1, RenderStates::LinearClamp.GetAddressOf());
+	md3dImmediateContext->DrawIndexed(mFxaaPostQuad->IndexCount, mFxaaPostQuad->StartIndexLocation, mFxaaPostQuad->BaseVertexLocation);
+}
+void GameMain::RenderPostProcessing()
+{
+	RenderFXAA();
 }
 void GameMain::RenderOpaque()
 {
-	md3dImmediateContext->RSSetState(nullptr);
-	md3dImmediateContext->OMSetDepthStencilState(nullptr, 0);
 
-	for (auto &e : GameObjects)
-	{
-		e->shader = mShaders["Color"].get();
-	}
-
-	DrawShadow = false;
-	RenderGeometry();
-	RenderDebugWindow();
+	/*前向渲染
+		float Black[] = { 0,0,0,1 };
+		md3dImmediateContext->RSSetState(nullptr);
+		md3dImmediateContext->OMSetDepthStencilState(nullptr, 0);
+		md3dImmediateContext->OMSetRenderTargets(1, mRenderTargetView.GetAddressOf(), mDepthStencilView.Get());
+		md3dImmediateContext->ClearRenderTargetView(mRenderTargetView.Get(), Black);
+		md3dImmediateContext->RSSetViewports(1, &mScreenViewport);
+		md3dImmediateContext->ClearDepthStencilView(mDepthStencilView.Get(), D3D11_CLEAR_DEPTH | D3D11_CLEAR_STENCIL, 1.0f, 0);
+		for (auto &e : GameObjects)
+		{
+			e->shader = mShaders["ForwardDefault"].get();
+		}
+		RenderGeometry();
+	*/
+	RenderLightingPass();
 
 }
 void GameMain::RenderSkyBox()
 {
 	md3dImmediateContext->RSSetState(RenderStates::CullOff.Get());
 	md3dImmediateContext->OMSetDepthStencilState(RenderStates::DepthLessEqual.Get(), 0);
+	md3dImmediateContext->OMSetRenderTargets(1, mLightBuffer->mRTV.GetAddressOf(), mGbuffer->mDSV.Get());//使用渲染Gbuffer时的zbuffer
 
-	ObjectConstant VSConstant;
-	XMMATRIX view, proj, world;
-	XMVECTOR eye = XMLoadFloat3(&EyePos);
-	world = XMMatrixTranslationFromVector(eye);
-	view = mCameraView;
-	proj = mCameraProj;
-	XMMATRIX mvp = world*view * proj;
-	XMStoreFloat4x4(&VSConstant.MVP, XMMatrixTranspose(mvp));
-	D3D11_MAPPED_SUBRESOURCE mapData;
-	HR(md3dImmediateContext->Map(mSkyBox->mObjectCbuffer.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mapData));
-	memcpy_s(mapData.pData, sizeof(VSConstant), &VSConstant, sizeof(VSConstant));
-	md3dImmediateContext->Unmap(mSkyBox->mObjectCbuffer.Get(), 0);
+	UpdateSkyBoxCBuffer();
 
 	mSkyBox->SetRenderDefaultAgrs(md3dImmediateContext.Get());
 	md3dImmediateContext->DrawIndexed(mSkyBox->IndexCount, mSkyBox->StartIndexLocation, mSkyBox->BaseVertexLocation);
 }
+bool GameMain::Init()
+{
+	if (!D3DApp::Init())
+		return false;
+	RenderStates::Init(md3dDevice.Get());
+
+	BuildTexture();
+	BuildShaderAndInputLayout();
+	BuildGeometry();
+	BuildLight();
+	BuildMaterial();
+	BuildRenderItem();
+	BuildCamera();
+
+	return true;
+}
+void GameMain::UpdateScene(float dt)
+{
+	PlayerControl(dt);
+	CameraControl(dt);
+	LightControl(dt);
+}
 void GameMain::DrawScene()
 {
-	float Black[] = { 0,0,0,0 };
+	float Black[] = { 0,0,0,1 };
 	assert(md3dImmediateContext);
 	assert(mSwapChain);
 
-	md3dImmediateContext->OMSetRenderTargets(0, 0, mShadowMap->mDSV.Get());
-	md3dImmediateContext->RSSetViewports(1, &mShadowMap->mViewPort);
-	md3dImmediateContext->ClearDepthStencilView(mShadowMap->mDSV.Get(), D3D11_CLEAR_DEPTH | D3D11_CLEAR_STENCIL, 1.0f, 0);
-	RenderShadow();
+	//前向管线顺序:不透->天空盒(在不透后防止overdraw)->半透->后处理
 
-	md3dImmediateContext->OMSetRenderTargets(1, mRenderTargetView.GetAddressOf(), mDepthStencilView.Get());
-	md3dImmediateContext->ClearRenderTargetView(mRenderTargetView.Get(),Black);
-	md3dImmediateContext->RSSetViewports(1, &mScreenViewport);
-	md3dImmediateContext->ClearDepthStencilView(mDepthStencilView.Get(), D3D11_CLEAR_DEPTH | D3D11_CLEAR_STENCIL, 1.0f, 0);
+	//延迟管线顺序:提前渲染所需几何信息,组合AO SSSM在lightingPass中加上光照,屏幕空间渲染场景不透明物体->天空盒->半透明->后处理
+	RenderGbuffer();
+	RenderSSAO();
+	RenderShadow();
 	RenderOpaque();
+
+	//渲染Gbuffer时开启zbuffer,利用此zbuffer渲染天空盒
 	RenderSkyBox();
+
+	/*如需渲染半透明物体,前向渲染半透明,暂无需求
+	RenderTransParent();
+	*/
+
+	//其余后处理效果
+	RenderPostProcessing();
+
+	//中间buffer调试窗口
+	RenderDebugWindow();
 
 	HR(mSwapChain->Present(0, 0));
 }

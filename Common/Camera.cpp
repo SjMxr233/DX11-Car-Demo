@@ -3,6 +3,10 @@ XMFLOAT3 Camera::GetY()
 {
 	return mUp;
 }
+float Camera::GetFarZ()
+{
+	return mFarZ;
+}
 void Camera::SetPosition(float x, float y, float z)
 {
 	mPosition = XMFLOAT3(x, y, z);
@@ -20,6 +24,8 @@ XMFLOAT3 Camera::GetPosition()
 }
 void Camera::SetLens(float fovY, float aspect, float zn, float zf)
 {
+	mNearZ = zn;
+	mFarZ = zf;
 	XMMATRIX p = XMMatrixPerspectiveFovLH(fovY, aspect, zn, zf);
 	XMStoreFloat4x4(&mProj, p);
 	mViewDirty = true;

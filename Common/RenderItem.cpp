@@ -55,7 +55,7 @@ void MeshGeometry::SetBuffer(ID3D11Device *device, const std::vector<GeometryGen
 	HR(device->CreateBuffer(&ibd, &IinitData, mIndexBuffer.GetAddressOf()));
 	HR(device->CreateBuffer(&vbd, &vinitData, mVertexBuffer.GetAddressOf()));
 }
-void RenderItem::CreatLightCBuffer(ID3D11Device *device, UINT ByteWidth)
+void RenderItem::CreatObjectPsCBuffer(ID3D11Device *device, UINT ByteWidth)
 {
 	D3D11_BUFFER_DESC cbd;
 	ZeroMemory(&cbd, sizeof(cbd));
@@ -65,9 +65,9 @@ void RenderItem::CreatLightCBuffer(ID3D11Device *device, UINT ByteWidth)
 	cbd.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
 	cbd.MiscFlags = 0;
 
-	HR(device->CreateBuffer(&cbd, nullptr, mLightCbuffer.GetAddressOf()));
+	HR(device->CreateBuffer(&cbd, nullptr, mPsCB.GetAddressOf()));
 }
-void RenderItem::CreatObjectCBuffer(ID3D11Device *device, UINT ByteWidth)
+void RenderItem::CreatObjectVsCBuffer(ID3D11Device *device, UINT ByteWidth)
 {
 	D3D11_BUFFER_DESC cbd;
 	ZeroMemory(&cbd, sizeof(cbd));
@@ -77,7 +77,7 @@ void RenderItem::CreatObjectCBuffer(ID3D11Device *device, UINT ByteWidth)
 	cbd.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
 	cbd.MiscFlags = 0;
 
-	HR(device->CreateBuffer(&cbd, nullptr, mObjectCbuffer.GetAddressOf()));
+	HR(device->CreateBuffer(&cbd, nullptr, mVsCB.GetAddressOf()));
 }
 void XM_CALLCONV RenderItem::SetWorld(FXMMATRIX w)
 {
@@ -111,9 +111,9 @@ void RenderItem::SetRenderDefaultAgrs(ID3D11DeviceContext *Context)
 		Context->PSSetSamplers(0, 1, RenderStates::LinearWrap.GetAddressOf());
 
 		Context->PSSetShader(shader->mPixelShader.Get(), nullptr, 0);
-		Context->PSSetConstantBuffers(1, 1, mLightCbuffer.GetAddressOf());//b1
+		Context->PSSetConstantBuffers(1, 1, mPsCB.GetAddressOf());//b1
 
 		Context->VSSetShader(shader->mVertexShader.Get(), nullptr, 0);
-		Context->VSSetConstantBuffers(0, 1, mObjectCbuffer.GetAddressOf());//b0-0
+		Context->VSSetConstantBuffers(0, 1, mVsCB.GetAddressOf());//b0-0
 	}
 }
