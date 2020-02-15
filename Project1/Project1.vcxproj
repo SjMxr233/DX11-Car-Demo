@@ -19,40 +19,40 @@
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="Common\Camera.h" />
-    <ClInclude Include="Common\ConstantBuffer.h" />
-    <ClInclude Include="Common\d3dApp.h" />
-    <ClInclude Include="Common\d3dUtil.h" />
-    <ClInclude Include="Common\DDSTextureLoader.h" />
-    <ClInclude Include="Common\DirectionLight.h" />
-    <ClInclude Include="Common\GameTimer.h" />
-    <ClInclude Include="Common\Gbuffer.h" />
-    <ClInclude Include="Common\GeometryGenerator.h" />
-    <ClInclude Include="Common\LightBuffer.h" />
-    <ClInclude Include="Common\MathHelper.h" />
-    <ClInclude Include="Common\RenderItem.h" />
-    <ClInclude Include="Common\RenderStates.h" />
-    <ClInclude Include="Common\ShadowMap.h" />
-    <ClInclude Include="Common\Ssao.h" />
-    <ClInclude Include="Common\Transform.h" />
+    <ClInclude Include="Source\Camera.h" />
+    <ClInclude Include="Source\ConstantBuffer.h" />
+    <ClInclude Include="Source\d3dApp.h" />
+    <ClInclude Include="Source\d3dUtil.h" />
+    <ClInclude Include="Source\DDSTextureLoader.h" />
+    <ClInclude Include="Source\DirectionLight.h" />
+    <ClInclude Include="Source\GameTimer.h" />
+    <ClInclude Include="Source\Gbuffer.h" />
+    <ClInclude Include="Source\GeometryGenerator.h" />
+    <ClInclude Include="Source\LightBuffer.h" />
+    <ClInclude Include="Source\MathHelper.h" />
+    <ClInclude Include="Source\RenderItem.h" />
+    <ClInclude Include="Source\RenderStates.h" />
+    <ClInclude Include="Source\ShadowMap.h" />
+    <ClInclude Include="Source\Ssao.h" />
+    <ClInclude Include="Source\Transform.h" />
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="Common\Camera.cpp" />
-    <ClCompile Include="Common\d3dApp.cpp" />
-    <ClCompile Include="Common\d3dUtil.cpp" />
-    <ClCompile Include="Common\DDSTextureLoader.cpp" />
-    <ClCompile Include="Common\DirectionLight.cpp" />
-    <ClCompile Include="Common\GameMain.cpp" />
-    <ClCompile Include="Common\GameTimer.cpp" />
-    <ClCompile Include="Common\Gbuffer.cpp" />
-    <ClCompile Include="Common\GeometryGenerator.cpp" />
-    <ClCompile Include="Common\LightBuffer.cpp" />
-    <ClCompile Include="Common\MathHelper.cpp" />
-    <ClCompile Include="Common\RenderItem.cpp" />
-    <ClCompile Include="Common\RenderStates.cpp" />
-    <ClCompile Include="Common\ShadowMap.cpp" />
-    <ClCompile Include="Common\Ssao.cpp" />
-    <ClCompile Include="Common\Transform.cpp" />
+    <ClCompile Include="Source\Camera.cpp" />
+    <ClCompile Include="Source\d3dApp.cpp" />
+    <ClCompile Include="Source\d3dUtil.cpp" />
+    <ClCompile Include="Source\DDSTextureLoader.cpp" />
+    <ClCompile Include="Source\DirectionLight.cpp" />
+    <ClCompile Include="Source\GameMain.cpp" />
+    <ClCompile Include="Source\GameTimer.cpp" />
+    <ClCompile Include="Source\Gbuffer.cpp" />
+    <ClCompile Include="Source\GeometryGenerator.cpp" />
+    <ClCompile Include="Source\LightBuffer.cpp" />
+    <ClCompile Include="Source\MathHelper.cpp" />
+    <ClCompile Include="Source\RenderItem.cpp" />
+    <ClCompile Include="Source\RenderStates.cpp" />
+    <ClCompile Include="Source\ShadowMap.cpp" />
+    <ClCompile Include="Source\Ssao.cpp" />
+    <ClCompile Include="Source\Transform.cpp" />
   </ItemGroup>
   <ItemGroup>
     <None Include="shader\ForwardDefault.hlsl">

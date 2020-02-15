@@ -18,102 +18,102 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="Common\d3dApp.h">
+    <ClInclude Include="Source\d3dApp.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="Common\d3dUtil.h">
+    <ClInclude Include="Source\d3dUtil.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="Common\GameTimer.h">
+    <ClInclude Include="Source\GameTimer.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="Common\MathHelper.h">
+    <ClInclude Include="Source\MathHelper.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="Common\GeometryGenerator.h">
+    <ClInclude Include="Source\GeometryGenerator.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="Common\DDSTextureLoader.h">
+    <ClInclude Include="Source\DDSTextureLoader.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="Common\RenderStates.h">
+    <ClInclude Include="Source\RenderStates.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="Common\RenderItem.h">
+    <ClInclude Include="Source\RenderItem.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="Common\ConstantBuffer.h">
+    <ClInclude Include="Source\ConstantBuffer.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="Common\Camera.h">
+    <ClInclude Include="Source\Camera.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="Common\ShadowMap.h">
+    <ClInclude Include="Source\ShadowMap.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="Common\Gbuffer.h">
+    <ClInclude Include="Source\Gbuffer.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="Common\DirectionLight.h">
+    <ClInclude Include="Source\DirectionLight.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="Common\Ssao.h">
+    <ClInclude Include="Source\Ssao.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="Common\LightBuffer.h">
+    <ClInclude Include="Source\LightBuffer.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="Common\Transform.h">
+    <ClInclude Include="Source\Transform.h">
       <Filter>头文件</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="Common\d3dApp.cpp">
+    <ClCompile Include="Source\d3dApp.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
-    <ClCompile Include="Common\d3dUtil.cpp">
+    <ClCompile Include="Source\d3dUtil.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
-    <ClCompile Include="Common\GameTimer.cpp">
+    <ClCompile Include="Source\GameTimer.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
-    <ClCompile Include="Common\GameMain.cpp">
+    <ClCompile Include="Source\GameMain.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
-    <ClCompile Include="Common\MathHelper.cpp">
+    <ClCompile Include="Source\MathHelper.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
-    <ClCompile Include="Common\GeometryGenerator.cpp">
+    <ClCompile Include="Source\GeometryGenerator.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
-    <ClCompile Include="Common\DDSTextureLoader.cpp">
+    <ClCompile Include="Source\DDSTextureLoader.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
-    <ClCompile Include="Common\RenderStates.cpp">
+    <ClCompile Include="Source\RenderStates.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
-    <ClCompile Include="Common\RenderItem.cpp">
+    <ClCompile Include="Source\RenderItem.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
-    <ClCompile Include="Common\Camera.cpp">
+    <ClCompile Include="Source\Camera.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
-    <ClCompile Include="Common\ShadowMap.cpp">
+    <ClCompile Include="Source\ShadowMap.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
-    <ClCompile Include="Common\Gbuffer.cpp">
+    <ClCompile Include="Source\Gbuffer.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
-    <ClCompile Include="Common\DirectionLight.cpp">
+    <ClCompile Include="Source\DirectionLight.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
-    <ClCompile Include="Common\Ssao.cpp">
+    <ClCompile Include="Source\Ssao.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
-    <ClCompile Include="Common\LightBuffer.cpp">
+    <ClCompile Include="Source\LightBuffer.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
-    <ClCompile Include="Common\Transform.cpp">
+    <ClCompile Include="Source\Transform.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
   </ItemGroup>
