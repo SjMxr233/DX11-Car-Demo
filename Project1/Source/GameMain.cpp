@@ -73,7 +73,7 @@ private:
 	std::shared_ptr<RenderItem> mFrontRightWheel;
 	std::shared_ptr<RenderItem> mBackLeftWheel;
 	std::shared_ptr<RenderItem> mBackRightWheel;
-	float mSteerAngle, mWheelRoll, mWheelSteer; //记录车身转向，车轮滚动，车轮转向角度
+	float mWheelRoll, mWheelSteer; //记录车轮滚动速度，车轮转向速度
 	float mVelocity = 0.0f;
 	float mRotVelocity = 0.0f;
 	float mMaxRotVelocity = 40.0f;
@@ -660,9 +660,9 @@ void GameMain::PlayerControl(const float dt)
 	mWheelSteer = 2.0f;
 	if (GetAsyncKeyState('W') & 0x8000)
 	{
-		//线性提速
-		mVelocity = MathHelper::Lerp(mVelocity, mMaxVelocity, 0.0008f);
-		mRotVelocity = MathHelper::Lerp(mRotVelocity, mMaxRotVelocity, 0.0008f);
+		//线性插值曲线提速
+		mVelocity = MathHelper::Lerp(mVelocity, mMaxVelocity, 0.3f*dt);
+		mRotVelocity = MathHelper::Lerp(mRotVelocity, mMaxRotVelocity, 0.3f*dt);
 		//简单的车身绕轴旋转
 		if (GetAsyncKeyState('A') & 0x8000)
 			mBody->transform->Rotation.y -= 0.06f*mRotVelocity *dt;
@@ -671,8 +671,8 @@ void GameMain::PlayerControl(const float dt)
 	}
 	if (GetAsyncKeyState('S') & 0x8000)
 	{
-		mVelocity = MathHelper::Lerp(mVelocity, -mMaxVelocity, 0.0008f);
-		mRotVelocity = MathHelper::Lerp(mRotVelocity, -mMaxRotVelocity, 0.0008f);
+		mVelocity = MathHelper::Lerp(mVelocity, -mMaxVelocity, 0.3f*dt);
+		mRotVelocity = MathHelper::Lerp(mRotVelocity, -mMaxRotVelocity, 0.3f*dt);
 		if (GetAsyncKeyState('A') & 0x8000)
 			mBody->transform->Rotation.y -= 0.06f*mRotVelocity * dt;
 		if (GetAsyncKeyState('D') & 0x8000)
@@ -695,8 +695,8 @@ void GameMain::PlayerControl(const float dt)
 	}
 	else
 	{
-		mFrontLeftWheel->transform->Rotation.y = MathHelper::Lerp(mFrontLeftWheel->transform->Rotation.y, 0.0f, 0.02f);
-		mFrontRightWheel->transform->Rotation.y = MathHelper::Lerp(mFrontRightWheel->transform->Rotation.y, 0.0f, 0.02f);
+		mFrontLeftWheel->transform->Rotation.y = MathHelper::Lerp(mFrontLeftWheel->transform->Rotation.y, 0.0f, 2.5f*dt);
+		mFrontRightWheel->transform->Rotation.y = MathHelper::Lerp(mFrontRightWheel->transform->Rotation.y, 0.0f, 2.5f*dt);
 	}
 	position += forward * mVelocity *dt;
 	//车轮滚动
@@ -705,8 +705,8 @@ void GameMain::PlayerControl(const float dt)
 	mBackLeftWheel->transform->Rotation.x += mWheelRoll * dt;
 	mBackRightWheel->transform->Rotation.x += mWheelRoll * dt;
 
-	mVelocity = MathHelper::Lerp(mVelocity, 0.0f, 0.002f);
-	mRotVelocity = MathHelper::Lerp(mRotVelocity, 0.0f, 0.002f);
+	mVelocity = MathHelper::Lerp(mVelocity, 0.0f, 0.8f*dt);
+	mRotVelocity = MathHelper::Lerp(mRotVelocity, 0.0f, 0.8f*dt);
 	XMStoreFloat3(&mBody->transform->Position, position);
 
 	mBody->transform->Update();
